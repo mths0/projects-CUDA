@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <cuda_runtime.h>
 
 //* In report Explain what bitonic sort is,
 //* explain our solution, put the code, then trace it
@@ -75,7 +76,8 @@ __global__ void bitonic(int *data,
             // 6. compare data[i] and data[partner]
             int group = Tk >> step_i; // k / 2**i
             bool ascending = ((group % 2) == 0);
-            if (sortAscending){
+
+            if (sortAscending){ // if sort was ascending
                 // 7. swap if needed
                 if(ascending){ // ascending
                     if(data[Tk] > data[p]){
@@ -90,7 +92,7 @@ __global__ void bitonic(int *data,
                         data[p] = temp;
                     }
                 }
-            }else{
+            }else{  // if sort was descending
                 if(ascending){ // descending
                     if(data[Tk] < data[p]){
                         int temp = data[Tk];
@@ -113,11 +115,19 @@ __global__ void bitonic(int *data,
 
 int main() {
 
-    const int LOGN = 3;
+    int device;
+    cudaGetDevice(&device);
+
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    const int DeviceMaxThread = prop.maxThreadsPerBlock;
+    
+    const int LOGN = 2;
     const int length = 1 << LOGN; // 2**LOGN --> n
 
-    const bool sortAscending = 0; // change to 0 for descending
+    const bool sortAscending = 1; // change to 0 for descending or 1 for ascending.
 
+    printf("%d\n",prop.maxGridSize[0]);
     int h_data[length];
     printf("Length = %d\n", length);
 
@@ -127,8 +137,7 @@ int main() {
     int *d_data;
     int size = length * sizeof(int);
 
-    int threadsPerBlock = 1024; 
-    int blocks = (length + threadsPerBlock -1) / threadsPerBlock; //! length must 2**n
+    int blocks = (length + DeviceMaxThread -1) / DeviceMaxThread; //! length must 2**n
 
     cudaMalloc(&d_data, size);
     cudaMemcpy(d_data, h_data,size, cudaMemcpyHostToDevice);
@@ -145,7 +154,7 @@ int main() {
             int seq_ij = 1 << (i - j + 1);     // 2 ** (i-j+1)
             int active_range = seq_ij >> 1;    // seq / 2
 
-            bitonic<<<blocks, threadsPerBlock>>>(
+            bitonic<<<blocks, DeviceMaxThread>>>(
                 d_data,
                 i,              //step_i
                 seq_ij,         
@@ -157,6 +166,8 @@ int main() {
         }
 
     }
+
+    
     cudaMemcpy(h_data, d_data, size, cudaMemcpyDeviceToHost);
     cudaFree(d_data);
 

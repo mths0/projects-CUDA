@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
+
+//* In report Explain what bitonic sort is,
+//* explain our solution, put the code, then trace it
 
 #define N 1024
 //! NUM of element should be 2**n
@@ -15,41 +19,6 @@
 //? witch data to use?
 // if thread Tk is involved, it will process data[k] and data[k + (seqij /2)]
 
-__global__ void bitonic(int *data, int j, int k, int length) {
-    // TODO:
-    // 1. calculate i (global thread index)
-    int Tk = blockIdx.x * blockDim.x + threadIdx.x;
-    // 2. check i within bounds (i < N)
-    if(Tk < length){
-        //2**(i-j+1)
-        // 3. compute partner = i ^ j
-        // ? int p = 1 << (Tk - j + 1);
-        int p = Tk ^ j; // ^ XOR
-        // 4. decide if this thread should act (partner > i)
-        if(p > Tk){
-            // 5. decide direction (ascending or descending) based on i & k
-            // 6. compare data[i] and data[partner]
-            // 7. swap if needed
-            //! did't work k/ (1 << Tk)
-            if( (Tk & k) == 0){ // ascending
-                if(data[Tk] > data[p]){
-                    int temp = data[Tk];
-                    data[Tk] = data[p];
-                    data[p] = temp;
-                }
-            }else { //descending
-                if(data[Tk] < data[p]){
-                    int temp = data[Tk];
-                    data[Tk] = data[p];
-                    data[p] = temp;
-                }
-            }
-
-        }
-    }
-    // copy back result --> in the main
-}
-
 void randomNumbers(int* arr, int size){
     srand(time(NULL));    
     for(int i = 0; i < size ; i++){
@@ -57,7 +26,7 @@ void randomNumbers(int* arr, int size){
     }
 }
 
-void printArray(int *arr, int length){
+void printArray(int *arr, int length){ // slow for large n
     printf("\n-------------------------------\n");
     for(int i=0; i < length; i++){
 
@@ -65,49 +34,137 @@ void printArray(int *arr, int length){
     }
 }
 
-void checkAscending(int* arr, int size){
+void checkAscending(int* arr, int size, bool sortAscending){
     for(int i = 0; i < size-1; i++){
-        if (arr[i] > arr[i+1])
-        {
-            printf("\n\nThere is a problem with sorting %d\n\n",i);
-            return;
+        if(sortAscending){
+            if (arr[i] > arr[i+1])
+            {
+                printf("\n\nThere is a problem with sorting %d\n\n",i);
+                return;
+            }
+
+        }else{
+            if (arr[i] < arr[i+1])
+            {
+                printf("\n\nThere is a problem with sorting %d\n\n",i);
+                return;
+            }
         }
         
     }printf("\n\nAll Sorted!.\n\n");
 }
+
+
+__global__ void bitonic(int *data,
+                        int step_i,
+                        int seq_ij,
+                        int active_range,
+                        int length,
+                        bool sortAscending
+                    ) {
+    // TODO:
+    // 1. calculate Tk
+    int Tk = blockIdx.x * blockDim.x + threadIdx.x;
+    // 2. check i within bounds (i < N)
+    if(Tk < length){
+        // 4. decide if this thread should act (partner > i)
+        if((Tk % seq_ij) < active_range){
+            
+            int p = Tk + active_range;  // partner
+
+            // 6. compare data[i] and data[partner]
+            int group = Tk >> step_i; // k / 2**i
+            bool ascending = ((group % 2) == 0);
+            if (sortAscending){
+                // 7. swap if needed
+                if(ascending){ // ascending
+                    if(data[Tk] > data[p]){
+                        int temp = data[Tk];
+                        data[Tk] = data[p];
+                        data[p] = temp;
+                    }
+                }else {     //descending
+                    if(data[Tk] < data[p]){
+                        int temp = data[Tk];
+                        data[Tk] = data[p];
+                        data[p] = temp;
+                    }
+                }
+            }else{
+                if(ascending){ // descending
+                    if(data[Tk] < data[p]){
+                        int temp = data[Tk];
+                        data[Tk] = data[p];
+                        data[p] = temp;
+                    }
+                }else {     //ascending
+                    if(data[Tk] > data[p]){
+                        int temp = data[Tk];
+                        data[Tk] = data[p];
+                        data[p] = temp;
+                    }
+                }
+
+            }
+
+        }
+    }
+}
+
 int main() {
-    const int LOGN = 18;
-    const int rr = 1 << LOGN; // 2**LOGN
-    int h_data[rr];
-    int length = sizeof(h_data) / sizeof(h_data[0]);
-    printf("length = %d\n", length);
+
+    const int LOGN = 3;
+    const int length = 1 << LOGN; // 2**LOGN --> n
+
+    const bool sortAscending = 0; // change to 0 for descending
+
+    int h_data[length];
+    printf("Length = %d\n", length);
+
     randomNumbers(h_data, length);
     printArray(h_data, length);
+
     int *d_data;
     int size = length * sizeof(int);
-    int threadsPerBlock = 1024; //256
+
+    int threadsPerBlock = 1024; 
     int blocks = (length + threadsPerBlock -1) / threadsPerBlock; //! length must 2**n
+
     cudaMalloc(&d_data, size);
     cudaMemcpy(d_data, h_data,size, cudaMemcpyHostToDevice);
-    // k = current subsequence length that we are working on (2,4,16,N)
-    // j = current distance between elements that being compared
+    
+
+
     //major step <<Step>>
-    for(int k = 2; k <= length; k *= 2) { //  k <<=1 --> k = k << 1 shift to left
+    for(int i = 1; i <= LOGN; i++) { 
+        
+
         //minor step <<Stage>>
-        for(int j = k / 2; j > 0; j /= 2){
-            bitonic<<<blocks, threadsPerBlock>>>(d_data,j,k,length);
+        for(int j = 1; j <= i; j++){
+            
+            int seq_ij = 1 << (i - j + 1);     // 2 ** (i-j+1)
+            int active_range = seq_ij >> 1;    // seq / 2
+
+            bitonic<<<blocks, threadsPerBlock>>>(
+                d_data,
+                i,              //step_i
+                seq_ij,         
+                active_range,   
+                length,          // n
+                sortAscending
+            );
             cudaDeviceSynchronize();
         }
-        
+
     }
     cudaMemcpy(h_data, d_data, size, cudaMemcpyDeviceToHost);
     cudaFree(d_data);
+
+
     printArray(h_data, length);
-    checkAscending(h_data, length);
-    //cudaMalloc
-    //cudaMemcpy
-    //lunch kernel
-    //cudaMemcpy
-    //cudaFree
+    checkAscending(h_data, length, sortAscending);
+    
+
+
     return 0;
 }

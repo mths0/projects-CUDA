@@ -4,21 +4,6 @@
 #include <math.h>
 #include <cuda_runtime.h>
 
-//* In report Explain what bitonic sort is,
-//* explain our solution, put the code, then trace it
-
-#define N 1024
-//! NUM of element should be 2**n
-//! for n elements we need log(n) steps
-//! for step i there are i stage 
-//! seq = 2**(i-j+1),  active_range = seq // 2
-
-//? increase or decrease?
-// if(k/2**i) is even tk will apply +
-// if(k/2**i) is odd tk will apply -
-
-//? witch data to use?
-// if thread Tk is involved, it will process data[k] and data[k + (seqij /2)]
 
 void randomNumbers(int* arr, int size){
     srand(time(NULL));    
@@ -63,7 +48,7 @@ __global__ void bitonic(int *data,
                         int length,
                         bool sortAscending
                     ) {
-    // TODO:
+    
     // 1. calculate Tk
     int Tk = blockIdx.x * blockDim.x + threadIdx.x;
     // 2. check i within bounds (i < N)
@@ -124,7 +109,6 @@ int main() {
     
     const int LOGN = 2;
     const int length = 1 << LOGN; // 2**LOGN --> n
-
     const bool sortAscending = 1; // change to 0 for descending or 1 for ascending.
 
     printf("%d\n",prop.maxGridSize[0]);
@@ -175,7 +159,6 @@ int main() {
     printArray(h_data, length);
     checkAscending(h_data, length, sortAscending);
     
-
 
     return 0;
 }

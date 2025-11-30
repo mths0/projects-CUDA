@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <math.h>
 #include <cuda_runtime.h>
 
 
@@ -12,7 +11,7 @@ void randomNumbers(int* arr, int size){
     }
 }
 
-void printArray(int *arr, int length){ // slow for large n
+void printArray(int *arr, int length){ 
     printf("\n-------------------------------\n");
     for(int i=0; i < length; i++){
 
